@@ -21,6 +21,7 @@ on:
         options:
           - GNOME
           - KDE
+          - Plasma Mobile
           - server
         default: 'KDE'
 
@@ -1022,6 +1023,21 @@ jobs:
             kde-config-plymouth plymouth-theme-breeze
           echo "✓ KDE Plymouth settings installed"
 
+
+      - name: "Install Plasma Mobile"
+        if: ${{ inputs.desktop == 'Plasma Mobile' }}
+        run: |
+          sudo chroot "$ROOTFS_MOUNT" apt-get update
+          sudo chroot "$ROOTFS_MOUNT" apt-get install -y             plasma-mobile plasma-workspace plasma-nm             sddm konsole firefox-esr             dolphin kate
+          echo "✓ Plasma Mobile installed"
+
+      - name: "Install Plasma Mobile Plymouth Settings"
+        if: ${{ inputs.desktop == 'Plasma Mobile' && steps.partition.outputs.quiet_boot_enabled == 'true' }}
+        run: |
+          sudo chroot "$ROOTFS_MOUNT" apt-get update
+          sudo chroot "$ROOTFS_MOUNT" apt-get install -y             kde-config-plymouth plymouth-theme-breeze
+          echo "✓ Plasma Mobile Plymouth settings installed"
+
       - name: "Configure GDM"
         if: ${{ inputs.desktop == 'GNOME' && (!inputs.autologin) }}
         run: |
@@ -1031,6 +1047,13 @@ jobs:
 
       - name: "Configure SDDM"
         if: ${{ inputs.desktop == 'KDE' && (!inputs.autologin) }}
+        run: |
+          sudo chroot "$ROOTFS_MOUNT" systemctl enable sddm
+          sudo chroot "$ROOTFS_MOUNT" systemctl set-default graphical.target
+          echo "✓ SDDM enabled (manual login)"
+
+      - name: "Configure Plasma Mobile SDDM"
+        if: ${{ inputs.desktop == 'Plasma Mobile' && (!inputs.autologin) }}
         run: |
           sudo chroot "$ROOTFS_MOUNT" systemctl enable sddm
           sudo chroot "$ROOTFS_MOUNT" systemctl set-default graphical.target
@@ -1061,6 +1084,19 @@ jobs:
           sudo chroot "$ROOTFS_MOUNT" systemctl enable sddm
           sudo chroot "$ROOTFS_MOUNT" systemctl set-default graphical.target
           echo "✓ SDDM autologin configured for ${{ inputs.username }}"
+
+      - name: "Configure Plasma Mobile SDDM with Autologin"
+        if: ${{ inputs.desktop == 'Plasma Mobile' && inputs.autologin }}
+        run: |
+          sudo mkdir -p "$ROOTFS_MOUNT/etc/sddm.conf.d"
+          sudo tee "$ROOTFS_MOUNT/etc/sddm.conf.d/autologin.conf" << EOF
+          [Autologin]
+          User=${{ inputs.username }}
+          Session=plasma-mobile
+          EOF
+          sudo chroot "$ROOTFS_MOUNT" systemctl enable sddm
+          sudo chroot "$ROOTFS_MOUNT" systemctl set-default graphical.target
+          echo "✓ Plasma Mobile SDDM autologin configured"
 
       - name: "Enable NetworkManager"
         run: |
