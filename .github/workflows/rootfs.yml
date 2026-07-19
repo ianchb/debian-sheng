@@ -878,6 +878,25 @@ jobs:
           retention-days: 3
           if-no-files-found: error
 
+      - name: "Download xiaomi-sheng-fingerprint"
+        run: |
+          LATEST_TAG=$(gh release list --repo ianchb/xiaomi-sheng-fingerprint --limit 1 --json tagName -q '.[0].tagName')
+          gh release download "$LATEST_TAG" \
+            --repo ianchb/xiaomi-sheng-fingerprint \
+            --pattern "*.deb" \
+            --clobber
+          echo "✓ xiaomi-sheng-fingerprint.deb downloaded"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: "Upload xiaomi-sheng-fingerprint"
+        uses: actions/upload-artifact@v7
+        with:
+          name: xiaomi-sheng-fingerprint-deb
+          path: xiaomi-sheng-fingerprint*.deb
+          retention-days: 3
+          if-no-files-found: error
+
       # ----------------------------------------------------------------
       # Create Image
       # ----------------------------------------------------------------
