@@ -559,7 +559,7 @@ jobs:
 
       - name: "Clone Source"
         run: |
-          git clone https://github.com/map220v/sheng_devauth.git source
+          git clone https://github.com/ianchb/sheng_devauth.git source
           echo "✓ Source cloned"
 
       - name: "Build Binary"
