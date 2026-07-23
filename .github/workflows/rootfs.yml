@@ -44,6 +44,22 @@ on:
         type: string
         default: 'xiaomi-sheng'
 
+      language:
+        description: 'System language'
+        type: choice
+        options:
+          - 'None (C.UTF-8)'
+          - 'en_US.UTF-8'
+          - 'zh_CN.UTF-8'
+          - 'zh_TW.UTF-8'
+          - 'ja_JP.UTF-8'
+          - 'ko_KR.UTF-8'
+          - 'de_DE.UTF-8'
+          - 'fr_FR.UTF-8'
+          - 'es_ES.UTF-8'
+          - 'ru_RU.UTF-8'
+        default: 'None (C.UTF-8)'
+
       boot_mode:
         description: |
           Boot mode:
@@ -1055,6 +1071,24 @@ jobs:
             echo "127.0.1.1 ${{ inputs.hostname }}" | sudo tee -a "$ROOTFS_MOUNT/etc/hosts"
           fi
           echo "✓ Hostname set to ${{ inputs.hostname }}"
+
+      - name: "Configure Locale"
+        run: |
+          LANG_CHOICE="${{ inputs.language }}"
+
+          if [ "$LANG_CHOICE" = 'None (C.UTF-8)' ]; then
+            echo "✓ System locale stays C.UTF-8"
+          else
+            # locales package provides locale-gen and /etc/locale.gen
+            sudo chroot "$ROOTFS_MOUNT" apt-get update
+            sudo chroot "$ROOTFS_MOUNT" apt-get install -y locales
+            # Generate selected language + en_US.UTF-8
+            sudo sed -i 's/^# *\(en_US\.UTF-8\)/\1/' "$ROOTFS_MOUNT/etc/locale.gen"
+            sudo sed -i "s/^# *\\(${LANG_CHOICE//./\\.}\\)/\\1/" "$ROOTFS_MOUNT/etc/locale.gen"
+            sudo chroot "$ROOTFS_MOUNT" locale-gen
+            echo "LANG=$LANG_CHOICE" | sudo tee "$ROOTFS_MOUNT/etc/default/locale"
+            echo "✓ Locale set to $LANG_CHOICE (+ en_US.UTF-8)"
+          fi
 
       - name: "Create User"
         run: |
