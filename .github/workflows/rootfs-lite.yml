@@ -2,7 +2,7 @@
 # 🐧 Build RootFS for Xiaomi Pad 6s Pro (Sheng)
 # ============================================================================
 
-name: Build RootFS
+name: Build RootFS (Test)
 
 on:
   workflow_dispatch:
