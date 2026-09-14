@@ -1064,6 +1064,21 @@ jobs:
           sudo chroot "$ROOTFS_MOUNT" systemctl enable adsprpcd-sensorspd.service
           echo "✓ Sensor services enabled"
 
+      - name: "Default Suspend Mode to s2idle"
+        run: |
+          sudo mkdir -p "$ROOTFS_MOUNT/etc/tmpfiles.d"
+          sudo tee "$ROOTFS_MOUNT/etc/tmpfiles.d/mem-sleep.conf" > /dev/null << 'TMPF'
+          # deep suspend returns after roughly 1.4 s on this device and nothing
+          # accounts for the resume: pm_wakeup_irq is empty, no wakeup source
+          # count changes, and the RTC alarm IRQ never fires. s2idle sleeps for
+          # the full requested duration and attributes its wakeup correctly.
+          # qcom_stats aosd is 0 in both modes, so deep is not reaching a deeper
+          # state before it returns.
+          # https://github.com/ianchb/sm8550-mainline/issues/9
+          w /sys/power/mem_sleep - - - - s2idle
+          TMPF
+          echo "✓ Suspend mode defaults to s2idle"
+
       - name: "Set Hostname"
         run: |
           echo "${{ inputs.hostname }}" | sudo tee "$ROOTFS_MOUNT/etc/hostname"
