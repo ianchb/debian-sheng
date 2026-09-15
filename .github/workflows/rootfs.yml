@@ -1069,6 +1069,21 @@ jobs:
           sudo chroot "$ROOTFS_MOUNT" systemctl enable adsprpcd-sensorspd.service
           echo "✓ Sensor services enabled"
 
+      - name: "Fix qbootctl Startup Race"
+        run: |
+          sudo mkdir -p "$ROOTFS_MOUNT/etc/systemd/system/qbootctl.service.d"
+          sudo tee "$ROOTFS_MOUNT/etc/systemd/system/qbootctl.service.d/wait-for-partitions.conf" > /dev/null << 'DROPIN'
+          # qbootctl reaches the partitions through /dev/disk/by-partlabel/boot_a,
+          # a symlink created by udev. The unit only orders itself after
+          # local-fs.target, which does not guarantee udev has processed this disk,
+          # so at boot qbootctl fails with
+          #   gpt_get_headers: Failed to resolve path for boot_a
+          # and the slot is never marked successful.
+          [Service]
+          ExecStartPre=/bin/sh -c 'for i in $(seq 1 30); do [ -e /dev/disk/by-partlabel/boot_a ] && exit 0; sleep 1; done; exit 1'
+          DROPIN
+          echo "✓ qbootctl waits for partition symlinks"
+
       - name: "Set Hostname"
         run: |
           echo "${{ inputs.hostname }}" | sudo tee "$ROOTFS_MOUNT/etc/hostname"
