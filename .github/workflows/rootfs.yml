@@ -978,6 +978,10 @@ jobs:
       - name: "Install Base Packages"
         run: |
           sudo chroot "$ROOTFS_MOUNT" apt-get update
+          # qbootctl marks the running A/B slot as successful. Without it the
+          # bootloader treats every boot as an unverified attempt, decrements the
+          # slot retry counter, and after ~7 reboots marks the slot unbootable and
+          # falls back to the other slot, which lands the device in fastboot.
           sudo chroot "$ROOTFS_MOUNT" apt-get install -y \
             systemd systemd-sysv \
             sudo vim wget curl \
@@ -995,7 +999,8 @@ jobs:
             libmbim-glib4 \
             libyaml-0-2 \
             libgudev-1.0-0 \
-            libpolkit-gobject-1-0
+            libpolkit-gobject-1-0 \
+            qbootctl
           echo "✓ Base packages installed"
 
       - name: "Use Upstream Regulatory Database"
@@ -1063,6 +1068,29 @@ jobs:
         run: |
           sudo chroot "$ROOTFS_MOUNT" systemctl enable adsprpcd-sensorspd.service
           echo "✓ Sensor services enabled"
+
+      - name: "Fix qbootctl Startup Race"
+        run: |
+          sudo mkdir -p "$ROOTFS_MOUNT/etc/systemd/system/qbootctl.service.d"
+          sudo tee "$ROOTFS_MOUNT/etc/systemd/system/qbootctl.service.d/wait-for-partitions.conf" > /dev/null << 'DROPIN'
+          # qbootctl reaches the partitions through /dev/disk/by-partlabel/boot_{a,b},
+          # symlinks created by udev. The shipped unit only orders itself after
+          # local-fs.target, which covers the LUN holding the root filesystem. These
+          # partitions live on a different UFS LUN (root is /dev/sda29 here while
+          # boot_a is /dev/sde14), and udev processes that one independently. When
+          # qbootctl runs first it fails with
+          #   gpt_get_headers: Failed to resolve path for boot_a
+          # the slot is never marked successful, the retry counter decrements on every
+          # boot, and the device eventually falls into fastboot.
+          #
+          # udev tags these partitions for systemd, so the device units can be used
+          # directly. Both slots are listed because the device may run from either;
+          # they sit on the same LUN, so depending on both adds no extra wait.
+          [Unit]
+          After=dev-disk-by\x2dpartlabel-boot_a.device dev-disk-by\x2dpartlabel-boot_b.device
+          Wants=dev-disk-by\x2dpartlabel-boot_a.device dev-disk-by\x2dpartlabel-boot_b.device
+          DROPIN
+          echo "✓ qbootctl ordered after the boot partition device units"
 
       - name: "Set Hostname"
         run: |
