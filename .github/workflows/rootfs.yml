@@ -1073,16 +1073,24 @@ jobs:
         run: |
           sudo mkdir -p "$ROOTFS_MOUNT/etc/systemd/system/qbootctl.service.d"
           sudo tee "$ROOTFS_MOUNT/etc/systemd/system/qbootctl.service.d/wait-for-partitions.conf" > /dev/null << 'DROPIN'
-          # qbootctl reaches the partitions through /dev/disk/by-partlabel/boot_a,
-          # a symlink created by udev. The unit only orders itself after
-          # local-fs.target, which does not guarantee udev has processed this disk,
-          # so at boot qbootctl fails with
+          # qbootctl reaches the partitions through /dev/disk/by-partlabel/boot_{a,b},
+          # symlinks created by udev. The shipped unit only orders itself after
+          # local-fs.target, which covers the LUN holding the root filesystem. These
+          # partitions live on a different UFS LUN (root is /dev/sda29 here while
+          # boot_a is /dev/sde14), and udev processes that one independently. When
+          # qbootctl runs first it fails with
           #   gpt_get_headers: Failed to resolve path for boot_a
-          # and the slot is never marked successful.
-          [Service]
-          ExecStartPre=/bin/sh -c 'for i in $(seq 1 30); do [ -e /dev/disk/by-partlabel/boot_a ] && exit 0; sleep 1; done; exit 1'
+          # the slot is never marked successful, the retry counter decrements on every
+          # boot, and the device eventually falls into fastboot.
+          #
+          # udev tags these partitions for systemd, so the device units can be used
+          # directly. Both slots are listed because the device may run from either;
+          # they sit on the same LUN, so depending on both adds no extra wait.
+          [Unit]
+          After=dev-disk-by\x2dpartlabel-boot_a.device dev-disk-by\x2dpartlabel-boot_b.device
+          Wants=dev-disk-by\x2dpartlabel-boot_a.device dev-disk-by\x2dpartlabel-boot_b.device
           DROPIN
-          echo "✓ qbootctl waits for partition symlinks"
+          echo "✓ qbootctl ordered after the boot partition device units"
 
       - name: "Set Hostname"
         run: |
