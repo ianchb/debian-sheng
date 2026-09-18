@@ -84,6 +84,12 @@ on:
         required: false
         default: ''
 
+      extra_packages:
+        description: 'Extra packages to install (space-separated)'
+        type: string
+        required: false
+        default: ''
+
       kernel_source:
         description: |
           Kernel Source:
@@ -1024,6 +1030,15 @@ jobs:
             rm /tmp/*.deb
           "
           echo "✓ All .deb packages installed"
+
+      - name: "Install Extra Packages"
+        if: ${{ inputs.extra_packages != '' }}
+        run: |
+          EXTRA_PKGS="${{ inputs.extra_packages }}"
+          echo "  Extra packages: $EXTRA_PKGS"
+          sudo chroot "$ROOTFS_MOUNT" apt-get update
+          sudo chroot "$ROOTFS_MOUNT" apt-get install -y $EXTRA_PKGS
+          echo "✓ Extra packages installed"
 
       # ----------------------------------------------------------------
       # System Tuning
