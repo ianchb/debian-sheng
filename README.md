@@ -91,6 +91,29 @@ When you trigger the **Build RootFS** workflow via `workflow_dispatch`, the foll
 
 ---
 
+## Device Information (About panels)
+
+The image fills in the tablet's hardware details in English, so desktop
+"Settings → About" / KDE Info Center no longer show empty or partial
+processor/SoC fields on AArch64:
+
+| Field | Value |
+|-------|-------|
+| Hardware model | `Xiaomi Pad 6S Pro 12.4 (24018RPACC, sheng)` |
+| Hardware vendor | `Xiaomi` |
+| Processor / SoC | `Qualcomm Snapdragon 8 Gen 2 (SM8550) 8-core` |
+
+- `/etc/machine-info` carries `CHASSIS`, `HARDWARE_VENDOR` and
+  `HARDWARE_MODEL`; `systemd-hostnamed` reads them where DMI is unavailable
+  (GNOME Settings → About shows the hardware model/vendor from this).
+- `/usr/local/sbin/sheng-device-info` runs from
+  `sheng-device-info.service` before the display manager: it prepends the
+  CPU/SoC line to a copy of `/proc/cpuinfo` and bind-mounts it over the real
+  file, because AArch64 `/proc/cpuinfo` has no `model name` field (which is
+  what GNOME Settings and KDE Info Center parse for the processor name).
+- The "Graphics" row may still be empty: GNOME derives it from DMI/PCI IDs,
+  which ARM SoCs don't provide.
+
 ## Flashing to Your Device
 
 ### Prerequisites

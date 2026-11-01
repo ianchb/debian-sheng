@@ -1073,6 +1073,77 @@ jobs:
           fi
           echo "✓ Hostname set to ${{ inputs.hostname }}"
 
+      # ----------------------------------------------------------------
+      # Device Information (About panel)
+      # ----------------------------------------------------------------
+
+      - name: "Add Device Information (SoC / CPU / Model)"
+        run: |
+          # Desktop About panels on AArch64 show no processor/SoC data:
+          # /proc/cpuinfo has no "model name" and there is no DMI on ARM.
+          # systemd-hostnamed fills the hardware model from /etc/machine-info,
+          # and a bind-mounted /proc/cpuinfo provides the CPU/SoC string.
+          sudo tee "$ROOTFS_MOUNT/etc/machine-info" >/dev/null <<'EOF'
+          CHASSIS=tablet
+          DEPLOYMENT=production
+          HARDWARE_VENDOR=Xiaomi
+          HARDWARE_MODEL=Xiaomi Pad 6S Pro 12.4 (24018RPACC, sheng)
+          EOF
+
+          sudo mkdir -p "$ROOTFS_MOUNT/usr/local/sbin" "$ROOTFS_MOUNT/etc/systemd/system"
+          sudo tee "$ROOTFS_MOUNT/usr/local/sbin/sheng-device-info" >/dev/null <<'EOF'
+          #!/bin/sh
+          # Provide complete English CPU/SoC information for desktop About panels.
+          # AArch64 /proc/cpuinfo has no "model name" line, so GNOME Settings and
+          # KDE Info Center leave the processor field empty. Bind a small wrapper
+          # with the SoC/CPU information over the real file.
+          set -eu
+
+          RUN=/run/sheng-device-info
+          FAKE=$RUN/cpuinfo
+          ORIG=$RUN/cpuinfo.orig
+          mkdir -p "$RUN"
+
+          # Capture the real cpuinfo before anything is mounted over it.
+          if ! mountpoint -q /proc/cpuinfo; then
+          	cat /proc/cpuinfo > "$ORIG"
+          fi
+
+          MODEL=$(tr -d '\0' < /proc/device-tree/model 2>/dev/null || true)
+          [ -n "${MODEL:-}" ] || MODEL="Xiaomi Pad 6S Pro 12.4"
+
+          {
+          	echo "processor : 0"
+          	echo "model name : Qualcomm Snapdragon 8 Gen 2 (SM8550) 8-core"
+          	echo "Hardware : $MODEL (sheng, SM8550)"
+          	cat "$ORIG"
+          } > "$FAKE"
+
+          if mountpoint -q /proc/cpuinfo; then
+          	umount -l /proc/cpuinfo 2>/dev/null || true
+          fi
+          mount --bind "$FAKE" /proc/cpuinfo 2>/dev/null || true
+          EOF
+          sudo chmod 755 "$ROOTFS_MOUNT/usr/local/sbin/sheng-device-info"
+
+          sudo tee "$ROOTFS_MOUNT/etc/systemd/system/sheng-device-info.service" >/dev/null <<'EOF'
+          [Unit]
+          Description=Provide complete SoC/CPU information for desktop About panels
+          After=local-fs.target
+          Before=display-manager.service
+
+          [Service]
+          Type=oneshot
+          ExecStart=/usr/local/sbin/sheng-device-info
+          RemainAfterExit=yes
+
+          [Install]
+          WantedBy=multi-user.target
+          EOF
+
+          sudo chroot "$ROOTFS_MOUNT" systemctl enable sheng-device-info.service
+          echo "✓ Device information (SoC/CPU/model) installed"
+
       - name: "Configure Locale"
         run: |
           LANG_CHOICE="${{ inputs.language }}"
