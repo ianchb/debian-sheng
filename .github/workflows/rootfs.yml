@@ -1073,6 +1073,123 @@ jobs:
           fi
           echo "✓ Hostname set to ${{ inputs.hostname }}"
 
+      # ----------------------------------------------------------------
+      # Device Information (About panel)
+      # ----------------------------------------------------------------
+
+      - name: "Add Device Information (Model / Processor / GPU)"
+        run: |
+          # Desktop About panels leave hardware fields empty on AArch64:
+          # /proc/cpuinfo has no "model name", ARM has no DMI, and Mesa reports
+          # the GPU under its internal codename (FD740). systemd-hostnamed takes
+          # the model from /etc/machine-info, a bind-mounted /proc/cpuinfo
+          # provides the SoC name, and a helper wrapper translates the GPU name.
+          sudo tee "$ROOTFS_MOUNT/etc/machine-info" >/dev/null <<'EOF'
+          CHASSIS=tablet
+          DEPLOYMENT=production
+          HARDWARE_VENDOR=Xiaomi
+          HARDWARE_MODEL=Pad 6S Pro 12.4 (Tablet, 24018RPACC, sheng)
+          EOF
+
+          sudo mkdir -p "$ROOTFS_MOUNT/usr/local/sbin" "$ROOTFS_MOUNT/etc/systemd/system"
+          sudo tee "$ROOTFS_MOUNT/usr/local/sbin/sheng-device-info" >/dev/null <<'EOF'
+          #!/bin/sh
+          # Provide complete English SoC/CPU information for desktop About panels.
+          # AArch64 /proc/cpuinfo has no "model name" line, so GNOME Settings
+          # (which parses it through libgtop) and KDE Info Center leave the
+          # processor field empty. Bind a copy of /proc/cpuinfo that carries the
+          # SoC name in every processor block over the real file.
+          set -eu
+
+          RUN=/run/sheng-device-info
+          FAKE=$RUN/cpuinfo
+          ORIG=$RUN/cpuinfo.orig
+          SOC="Qualcomm Snapdragon 8 Gen 2 (SM8550) 8-Core"
+
+          mkdir -p "$RUN"
+
+          is_mounted() {
+          	awk '$5 == "/proc/cpuinfo" { found = 1 } END { exit !found }' /proc/self/mountinfo
+          }
+
+          # Keep a pristine copy of the real file. When the service is restarted
+          # while the bind mount is still in place, /proc/cpuinfo already serves
+          # the fake data, so only capture it once per boot.
+          if [ ! -s "$ORIG" ]; then
+          	cat /proc/cpuinfo > "$ORIG"
+          fi
+
+          # Insert "model name" into every CPU block so per-core parsing finds it.
+          awk -v soc="$SOC" '
+          	/^processor[[:space:]]*:/ { print; print "model name\t: " soc; next }
+          	{ print }
+          ' "$ORIG" > "$FAKE.new"
+          mv "$FAKE.new" "$FAKE"
+
+          if is_mounted; then
+          	umount -l /proc/cpuinfo 2>/dev/null || true
+          fi
+          mount --bind "$FAKE" /proc/cpuinfo
+          EOF
+          sudo chmod 755 "$ROOTFS_MOUNT/usr/local/sbin/sheng-device-info"
+
+          sudo tee "$ROOTFS_MOUNT/etc/systemd/system/sheng-device-info.service" >/dev/null <<'EOF'
+          [Unit]
+          Description=Provide complete SoC/CPU information for desktop About panels
+          After=local-fs.target
+          Before=display-manager.service
+
+          [Service]
+          Type=oneshot
+          ExecStart=/usr/local/sbin/sheng-device-info
+          RemainAfterExit=yes
+
+          [Install]
+          WantedBy=multi-user.target
+          EOF
+
+          sudo chroot "$ROOTFS_MOUNT" systemctl enable sheng-device-info.service
+
+          # GNOME shows the GL renderer in the "Graphics" row. Mesa reports the
+          # SM8550 GPU as "FD740", so wrap the helper and keep the original.
+          HELPER=/usr/libexec/gnome-control-center-print-renderer
+          if [ -x "$ROOTFS_MOUNT$HELPER" ] && ! sudo chroot "$ROOTFS_MOUNT" dpkg-divert --list "$HELPER" | grep -q "$HELPER"; then
+            sudo chroot "$ROOTFS_MOUNT" dpkg-divert --package sheng-device-info --add --rename --divert "$HELPER.real" "$HELPER"
+            sudo tee "$ROOTFS_MOUNT$HELPER" >/dev/null <<'EOF'
+          #!/bin/sh
+          # GNOME Settings asks this helper for the GL renderer and shows the
+          # result in the "Graphics" row. Mesa reports the SM8550 GPU under its
+          # internal codename (FD740), so translate it to the marketing name
+          # while keeping the real probe intact.
+          REAL=/usr/libexec/gnome-control-center-print-renderer.real
+
+          if [ -x "$REAL" ]; then
+          	out=$("$REAL" 2>/dev/null || true)
+          	case "$out" in
+          	FD740*)
+          		echo "Qualcomm Adreno 740"
+          		exit 0
+          		;;
+          	"")
+          		;;
+          	*)
+          		echo "$out"
+          		exit 0
+          		;;
+          	esac
+          fi
+
+          echo "Qualcomm Adreno 740"
+          EOF
+            sudo chmod 755 "$ROOTFS_MOUNT$HELPER"
+            echo "✓ GPU name installed"
+          else
+            echo "⚠ gnome-control-center renderer helper not found, skipping GPU name"
+          fi
+
+          echo "✓ Device information (model/processor/GPU) installed"
+
+
       - name: "Configure Locale"
         run: |
           LANG_CHOICE="${{ inputs.language }}"
