@@ -1088,7 +1088,7 @@ jobs:
           CHASSIS=tablet
           DEPLOYMENT=production
           HARDWARE_VENDOR=Xiaomi
-          HARDWARE_MODEL=Pad 6S Pro 12.4 (24018RPACC, sheng)
+          HARDWARE_MODEL=Pad 6S Pro 12.4 (Tablet, 24018RPACC, sheng)
           EOF
 
           sudo mkdir -p "$ROOTFS_MOUNT/usr/local/sbin" "$ROOTFS_MOUNT/etc/systemd/system"

@@ -99,7 +99,7 @@ processor/SoC fields on AArch64:
 
 | Field | Value |
 |-------|-------|
-| Hardware model | `Xiaomi Pad 6S Pro 12.4 (24018RPACC, sheng)` |
+| Hardware model | `Xiaomi Pad 6S Pro 12.4 (Tablet, 24018RPACC, sheng)` |
 | Hardware vendor | `Xiaomi` |
 | Processor / SoC | `Qualcomm Snapdragon 8 Gen 2 (SM8550) × 8` |
 | Graphics / GPU | `Qualcomm Adreno 740` |
