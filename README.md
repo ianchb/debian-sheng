@@ -101,7 +101,8 @@ processor/SoC fields on AArch64:
 |-------|-------|
 | Hardware model | `Xiaomi Pad 6S Pro 12.4 (24018RPACC, sheng)` |
 | Hardware vendor | `Xiaomi` |
-| Processor / SoC | `Qualcomm Snapdragon 8 Gen 2 (SM8550) 8-core` |
+| Processor / SoC | `Qualcomm Snapdragon 8 Gen 2 (SM8550) × 8` |
+| Graphics / GPU | `Qualcomm Adreno 740` |
 
 - `/etc/machine-info` carries `CHASSIS`, `HARDWARE_VENDOR` and
   `HARDWARE_MODEL`; `systemd-hostnamed` reads them where DMI is unavailable
@@ -111,8 +112,9 @@ processor/SoC fields on AArch64:
   CPU/SoC line to a copy of `/proc/cpuinfo` and bind-mounts it over the real
   file, because AArch64 `/proc/cpuinfo` has no `model name` field (which is
   what GNOME Settings and KDE Info Center parse for the processor name).
-- The "Graphics" row may still be empty: GNOME derives it from DMI/PCI IDs,
-  which ARM SoCs don't provide.
+- `/usr/libexec/gnome-control-center-print-renderer` is wrapped (the original
+  binary is kept as `.real` via `dpkg-divert`) so the "Graphics" row shows
+  `Qualcomm Adreno 740` instead of Mesa's internal codename (`FD740`).
 
 ## Flashing to Your Device
 

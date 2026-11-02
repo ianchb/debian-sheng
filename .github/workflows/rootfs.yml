@@ -1077,52 +1077,59 @@ jobs:
       # Device Information (About panel)
       # ----------------------------------------------------------------
 
-      - name: "Add Device Information (SoC / CPU / Model)"
+      - name: "Add Device Information (Model / Processor / GPU)"
         run: |
-          # Desktop About panels on AArch64 show no processor/SoC data:
-          # /proc/cpuinfo has no "model name" and there is no DMI on ARM.
-          # systemd-hostnamed fills the hardware model from /etc/machine-info,
-          # and a bind-mounted /proc/cpuinfo provides the CPU/SoC string.
+          # Desktop About panels leave hardware fields empty on AArch64:
+          # /proc/cpuinfo has no "model name", ARM has no DMI, and Mesa reports
+          # the GPU under its internal codename (FD740). systemd-hostnamed takes
+          # the model from /etc/machine-info, a bind-mounted /proc/cpuinfo
+          # provides the SoC name, and a helper wrapper translates the GPU name.
           sudo tee "$ROOTFS_MOUNT/etc/machine-info" >/dev/null <<'EOF'
           CHASSIS=tablet
           DEPLOYMENT=production
           HARDWARE_VENDOR=Xiaomi
-          HARDWARE_MODEL=Xiaomi Pad 6S Pro 12.4 (24018RPACC, sheng)
+          HARDWARE_MODEL=Pad 6S Pro 12.4 (24018RPACC, sheng)
           EOF
 
           sudo mkdir -p "$ROOTFS_MOUNT/usr/local/sbin" "$ROOTFS_MOUNT/etc/systemd/system"
           sudo tee "$ROOTFS_MOUNT/usr/local/sbin/sheng-device-info" >/dev/null <<'EOF'
           #!/bin/sh
-          # Provide complete English CPU/SoC information for desktop About panels.
-          # AArch64 /proc/cpuinfo has no "model name" line, so GNOME Settings and
-          # KDE Info Center leave the processor field empty. Bind a small wrapper
-          # with the SoC/CPU information over the real file.
+          # Provide complete English SoC/CPU information for desktop About panels.
+          # AArch64 /proc/cpuinfo has no "model name" line, so GNOME Settings
+          # (which parses it through libgtop) and KDE Info Center leave the
+          # processor field empty. Bind a copy of /proc/cpuinfo that carries the
+          # SoC name in every processor block over the real file.
           set -eu
 
           RUN=/run/sheng-device-info
           FAKE=$RUN/cpuinfo
           ORIG=$RUN/cpuinfo.orig
+          SOC="Qualcomm Snapdragon 8 Gen 2 (SM8550) 8-Core"
+
           mkdir -p "$RUN"
 
-          # Capture the real cpuinfo before anything is mounted over it.
-          if ! mountpoint -q /proc/cpuinfo; then
+          is_mounted() {
+          	awk '$5 == "/proc/cpuinfo" { found = 1 } END { exit !found }' /proc/self/mountinfo
+          }
+
+          # Keep a pristine copy of the real file. When the service is restarted
+          # while the bind mount is still in place, /proc/cpuinfo already serves
+          # the fake data, so only capture it once per boot.
+          if [ ! -s "$ORIG" ]; then
           	cat /proc/cpuinfo > "$ORIG"
           fi
 
-          MODEL=$(tr -d '\0' < /proc/device-tree/model 2>/dev/null || true)
-          [ -n "${MODEL:-}" ] || MODEL="Xiaomi Pad 6S Pro 12.4"
+          # Insert "model name" into every CPU block so per-core parsing finds it.
+          awk -v soc="$SOC" '
+          	/^processor[[:space:]]*:/ { print; print "model name\t: " soc; next }
+          	{ print }
+          ' "$ORIG" > "$FAKE.new"
+          mv "$FAKE.new" "$FAKE"
 
-          {
-          	echo "processor : 0"
-          	echo "model name : Qualcomm Snapdragon 8 Gen 2 (SM8550) 8-core"
-          	echo "Hardware : $MODEL (sheng, SM8550)"
-          	cat "$ORIG"
-          } > "$FAKE"
-
-          if mountpoint -q /proc/cpuinfo; then
+          if is_mounted; then
           	umount -l /proc/cpuinfo 2>/dev/null || true
           fi
-          mount --bind "$FAKE" /proc/cpuinfo 2>/dev/null || true
+          mount --bind "$FAKE" /proc/cpuinfo
           EOF
           sudo chmod 755 "$ROOTFS_MOUNT/usr/local/sbin/sheng-device-info"
 
@@ -1142,7 +1149,46 @@ jobs:
           EOF
 
           sudo chroot "$ROOTFS_MOUNT" systemctl enable sheng-device-info.service
-          echo "✓ Device information (SoC/CPU/model) installed"
+
+          # GNOME shows the GL renderer in the "Graphics" row. Mesa reports the
+          # SM8550 GPU as "FD740", so wrap the helper and keep the original.
+          HELPER=/usr/libexec/gnome-control-center-print-renderer
+          if [ -x "$ROOTFS_MOUNT$HELPER" ] && ! sudo chroot "$ROOTFS_MOUNT" dpkg-divert --list "$HELPER" | grep -q "$HELPER"; then
+            sudo chroot "$ROOTFS_MOUNT" dpkg-divert --package sheng-device-info --add --rename --divert "$HELPER.real" "$HELPER"
+            sudo tee "$ROOTFS_MOUNT$HELPER" >/dev/null <<'EOF'
+          #!/bin/sh
+          # GNOME Settings asks this helper for the GL renderer and shows the
+          # result in the "Graphics" row. Mesa reports the SM8550 GPU under its
+          # internal codename (FD740), so translate it to the marketing name
+          # while keeping the real probe intact.
+          REAL=/usr/libexec/gnome-control-center-print-renderer.real
+
+          if [ -x "$REAL" ]; then
+          	out=$("$REAL" 2>/dev/null || true)
+          	case "$out" in
+          	FD740*)
+          		echo "Qualcomm Adreno 740"
+          		exit 0
+          		;;
+          	"")
+          		;;
+          	*)
+          		echo "$out"
+          		exit 0
+          		;;
+          	esac
+          fi
+
+          echo "Qualcomm Adreno 740"
+          EOF
+            sudo chmod 755 "$ROOTFS_MOUNT$HELPER"
+            echo "✓ GPU name installed"
+          else
+            echo "⚠ gnome-control-center renderer helper not found, skipping GPU name"
+          fi
+
+          echo "✓ Device information (model/processor/GPU) installed"
+
 
       - name: "Configure Locale"
         run: |
