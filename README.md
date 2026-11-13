@@ -66,7 +66,7 @@ When you trigger the **Build RootFS** workflow via `workflow_dispatch`, the foll
 | **Custom partition** | Partition name to flash the rootfs to. **Required only when Boot mode is `custom`.** | any partition name (e.g. `debian`) | *(empty)* |
 | **Kernel source** | How to obtain the kernel image. **`prebuilt` is not available when Boot mode is `custom`.** | `prebuilt` – use a prebuilt kernel from [ianchb/sm8550-mainline](https://github.com/ianchb/sm8550-mainline); <br> `custom_build` – clone and compile a custom kernel from the repo specified below | `prebuilt` |
 | **Kernel Repo URL** | Git repository URL for the custom kernel. **Required when kernel source is `custom_build`.** | valid Git URL | `https://github.com/ianchb/sm8550-mainline` |
-| **Kernel Branch** | Branch to checkout from the kernel repository. **Required when kernel source is `custom_build`.** | branch name | `sheng-7.3.0` |
+| **Kernel Branch** | Branch to checkout from the kernel repository. **Required when kernel source is `custom_build`.** | branch name | `sheng-7.3.4` |
 | **Kernel Config** | Kernel config file name inside the repository. **Required when kernel source is `custom_build`.** | file name (e.g. `sm8550.config`) | `sm8550.config` |
 | **Firmware Repo URL** | Git repository URL for device firmware files. | valid Git URL | `https://github.com/ianchb/sheng-firmware` |
 | **Firmware Branch** | Branch to checkout from the firmware repository. | branch name | `master` |
